@@ -4,118 +4,85 @@
 
 int picoshell(char **cmds[])
 {
-	int   i       = 0;
-	int   prev_in = -1;
-	int   fd[2];
-	int   st;
-	int   res     = 0;
+	int i = 0;
+	int prev_in = -1;
+	int fd[2];
 	pid_t pid;
 
 	if (!cmds || !cmds[0])
-	{
-		return (1);
-	}
+		return 1;
 
 	while (cmds[i])
 	{
-		int has_next = (cmds[i + 1] != 0);
+		int has_next = (cmds[i + 1] != NULL);
 
 		if (has_next)
 		{
 			if (pipe(fd) == -1)
 			{
 				if (prev_in != -1)
-				{
 					close(prev_in);
-					prev_in = -1; /* prevent double close later */
-				}
-				res = 1;
-				break;
+				return 1;
 			}
 		}
 
 		pid = fork();
+		if (pid == -1)
+		{
+			if (has_next)
+			{
+				close(fd[0]);
+				close(fd[1]);
+			}
+			if (prev_in != -1)
+				close(prev_in);
+			return 1;
+		}
+
 		if (pid == 0)
 		{
 			if (prev_in != -1)
 			{
-				if (dup2(prev_in, 0) == -1)
-				{
+				if (dup2(prev_in, STDIN_FILENO) == -1)
 					exit(1);
-				}
 			}
 			if (has_next)
 			{
-				if (dup2(fd[1], 1) == -1)
-				{
+				if (dup2(fd[1], STDOUT_FILENO) == -1)
 					exit(1);
-				}
 			}
+
 			if (prev_in != -1)
-			{
 				close(prev_in);
-			}
 			if (has_next)
 			{
 				close(fd[0]);
 				close(fd[1]);
 			}
-			if (!cmds[i][0])
-			{
-				exit(1);
-			}
+
 			execvp(cmds[i][0], cmds[i]);
 			exit(1);
 		}
-		else if (pid == -1)
-		{
-			if (has_next)
-			{
-				close(fd[0]);
-				close(fd[1]);
-			}
-			if (prev_in != -1)
-			{
-				close(prev_in);
-				prev_in = -1; /* prevent double close later */
-			}
-			res = 1;
-			break;
-		}
 
 		if (prev_in != -1)
-		{
 			close(prev_in);
-		}
 		if (has_next)
 		{
 			close(fd[1]);
 			prev_in = fd[0];
 		}
 		else
-		{
 			prev_in = -1;
-		}
 
 		i++;
 	}
 
-	if (prev_in != -1)
-	{
-		close(prev_in);
-		prev_in = -1;
-	}
+	while (wait(NULL) > 0)
+		;
 
-	while (wait(&st) != -1)
-	{
-		if (st != 0)
-		{
-			res = 1;
-		}
-	}
-
-	return (res);
+	return 0;
 }
+
 
 // int main(void)
 // {
