@@ -1,281 +1,180 @@
 #include <stdio.h>
-#include <stdlib.h>
+#include <malloc.h>
 #include <ctype.h>
 
-/* --------------------------- GIVEN (unchanged) --------------------------- */
-
 typedef struct node {
-	enum {
-		ADD,
-		MULTI,
-		VAL
-	}	type;
-	int             val;
-	struct node    *l;
-	struct node    *r;
-}	node;
+    enum {
+        ADD,
+        MULTI,
+        VAL
+    }   type;
+    int val;
+    struct node *l;
+    struct node *r;
+}   node;
 
-node	*new_node(node n)
+node    *new_node(node n)
 {
-	node	*ret = calloc(1, sizeof(n));
-	if (!ret)
-		return (NULL);
-	*ret = n;
-	return (ret);
+    node *ret = calloc(1, sizeof(*ret));
+    if (!ret)
+        return (NULL);
+    *ret = n;
+    return (ret);
 }
 
-void	destroy_tree(node *n)
+void    destroy_tree(node *n)
 {
-	if (!n)
-		return ;
-	if (n->type != VAL)
-	{
-		destroy_tree(n->l);
-		destroy_tree(n->r);
-	}
-	free(n);
+    if (!n)
+        return ;
+    if (n->type != VAL)
+    {
+        destroy_tree(n->l);
+        destroy_tree(n->r);
+    }
+    free(n);
 }
 
-void	unexpected(char c)
+void    unexpected(char c)
 {
-	if (c)
-		printf("Unexpected token '%c'\n", c);
-	else
-		printf("Unexpected end of file\n");
+    if (c)
+        printf("Unexpected token '%c'\n", c);
+    else
+        printf("Unexpexted end of input\n"); // subject typo must match
 }
 
-/* NOTE: Given accept/expect are buggy in subject (accept advances unconditionally).
- * We keep them to match the skeleton but DO NOT use them in our parser. */
-int	accept(char **s, char c)
+int accept(char **s, char c)
 {
-	if (**s)
-	{
-		(*s)++;
-		return (1);
-	}
-	return (0);
+    if (**s == c)
+    {
+        (*s)++;
+        return (1);
+    }
+    return (0);
 }
 
-int	expect(char **s, char c)
+int expect(char **s, char c)
 {
-	if (accept(s, c))
-		return (1);
-	unexpected(**s);
-	return (0);
+    if (accept(s, c))
+        return (1);
+    unexpected(**s);
+    return (0);
 }
 
-/* --------------------------- YOUR IMPLEMENTATION ------------------------- */
-/* Safe helpers that handle whitespace and only consume on match. */
+static node *parse_add(char **s);
 
-static void	skip_ws(char **s)
+static node *parse_factor(char **s)
 {
-	while (**s == ' ' || **s == '\t' || **s == '\n'
-		|| **s == '\r' || **s == '\v' || **s == '\f')
-		(*s)++;
+    if (isdigit(**s))
+    {
+        node n = (node){VAL, **s - '0', NULL, NULL};
+        (*s)++;
+        return (new_node(n));
+    }
+    if (accept(s, '('))
+    {
+        node *inside = parse_add(s);
+        if (!inside)
+            return (NULL);
+        if (!expect(s, ')'))
+        {
+            destroy_tree(inside);
+            return (NULL);
+        }
+        return (inside);
+    }
+    unexpected(**s);
+    return (NULL);
 }
 
-static int	accept_tok(char **s, char c)
+static node *parse_term(char **s)
 {
-	skip_ws(s);
-	if (**s == c)
-	{
-		(*s)++;
-		return (1);
-	}
-	return (0);
+    node *left = parse_factor(s);
+    if (!left)
+        return (NULL);
+    while (accept(s, '*'))
+    {
+        node *right = parse_factor(s);
+        if (!right)
+        {
+            destroy_tree(left);
+            return (NULL);
+        }
+        node n = (node){MULTI, 0, left, right};
+        node *op = new_node(n);
+        if (!op)
+        {
+            destroy_tree(left);
+            destroy_tree(right);
+            return (NULL);
+        }
+        left = op;
+    }
+    return (left);
 }
 
-static int	expect_tok(char **s, char c)
+static node *parse_add(char **s)
 {
-	if (accept_tok(s, c))
-		return (1);
-	skip_ws(s);
-	unexpected(**s);
-	return (0);
+    node *left = parse_term(s);
+    if (!left)
+        return (NULL);
+    while (accept(s, '+'))
+    {
+        node *right = parse_term(s);
+        if (!right)
+        {
+            destroy_tree(left);
+            return (NULL);
+        }
+        node n = (node){ADD, 0, left, right};
+        node *op = new_node(n);
+        if (!op)
+        {
+            destroy_tree(left);
+            destroy_tree(right);
+            return (NULL);
+        }
+        left = op;
+    }
+    return (left);
 }
 
-static node	*new_val(int v)
+node    *parse_expr(char *s)
 {
-	node tmp;
-
-	tmp.type = VAL;
-	tmp.val = v;
-	tmp.l = NULL;
-	tmp.r = NULL;
-	return (new_node(tmp));
+    char *p = s;
+    node *ret = parse_add(&p);
+    if (!ret)
+        return (NULL);
+    if (*p)
+    {
+        unexpected(*p);
+        destroy_tree(ret);
+        return (NULL);
+    }
+    return (ret);
 }
 
-static node	*new_binop(int type, node *l, node *r)
+int eval_tree(node *tree)
 {
-	node tmp;
-
-	tmp.type = type;
-	tmp.val = 0;
-	tmp.l = l;
-	tmp.r = r;
-	return (new_node(tmp));
+    switch (tree->type)
+    {
+        case ADD:
+            return (eval_tree(tree->l) + eval_tree(tree->r));
+        case MULTI:
+            return (eval_tree(tree->l) * eval_tree(tree->r));
+        case VAL:
+            return (tree->val);
+    }
+    return (0);
 }
 
-/* Grammar (precedence: * > +)
-   expr   := term { '+' term }*
-   term   := factor { '*' factor }*
-   factor := DIGIT | '(' expr ')'
-   Single-digit values only (0..9). */
-
-static node	*parse_expr_r(char **s, int *ok);
-
-static node	*parse_factor(char **s, int *ok)
+int main(int argc, char **argv)
 {
-	node	*ret;
-	int		v;
-	char	*look;
-
-	skip_ws(s);
-	if (accept_tok(s, '('))
-	{
-		ret = parse_expr_r(s, ok);
-		if (!*ok)
-			return (NULL);
-		if (!expect_tok(s, ')'))
-		{
-			*ok = 0;
-			destroy_tree(ret);
-			return (NULL);
-		}
-		return (ret);
-	}
-	skip_ws(s);
-	if (isdigit((unsigned char)**s))
-	{
-		v = **s - '0';
-		(*s)++;
-		/* Enforce single-digit only */
-		look = *s;
-		skip_ws(&look);
-		if (isdigit((unsigned char)*look))
-		{
-			unexpected(*look);
-			*ok = 0;
-			return (NULL);
-		}
-		return (new_val(v));
-	}
-	unexpected(**s);
-	*ok = 0;
-	return (NULL);
-}
-
-static node	*parse_term(char **s, int *ok)
-{
-	node	*lhs;
-	node	*rhs;
-	node	*tmp;
-
-	lhs = parse_factor(s, ok);
-	if (!*ok)
-		return (NULL);
-	while (accept_tok(s, '*'))
-	{
-		rhs = parse_factor(s, ok);
-		if (!*ok)
-		{
-			destroy_tree(lhs);
-			return (NULL);
-		}
-		tmp = new_binop(MULTI, lhs, rhs);
-		if (!tmp)
-		{
-			destroy_tree(lhs);
-			destroy_tree(rhs);
-			*ok = 0;
-			return (NULL);
-		}
-		lhs = tmp;
-	}
-	return (lhs);
-}
-
-static node	*parse_expr_r(char **s, int *ok)
-{
-	node	*lhs;
-	node	*rhs;
-	node	*tmp;
-
-	lhs = parse_term(s, ok);
-	if (!*ok)
-		return (NULL);
-	while (accept_tok(s, '+'))
-	{
-		rhs = parse_term(s, ok);
-		if (!*ok)
-		{
-			destroy_tree(lhs);
-			return (NULL);
-		}
-		tmp = new_binop(ADD, lhs, rhs);
-		if (!tmp)
-		{
-			destroy_tree(lhs);
-			destroy_tree(rhs);
-			*ok = 0;
-			return (NULL);
-		}
-		lhs = tmp;
-	}
-	return (lhs);
-}
-
-/* --------------------------- parse_expr (public) -------------------------- */
-/* This replaces the //... placeholder in the given code. */
-
-node	*parse_expr(char *s)
-{
-	node	*ret;
-	int		ok;
-	char	*p;
-
-	if (!s)
-		return (NULL);
-	p = s;
-	ok = 1;
-	ret = parse_expr_r(&p, &ok);
-	if (!ok || !ret)
-		return (NULL);
-	skip_ws(&p);
-	if (*p)
-	{
-		unexpected(*p);
-		destroy_tree(ret);
-		return (NULL);
-	}
-	return (ret);
-}
-
-/* ---------------------------- GIVEN (unchanged) --------------------------- */
-
-int	eval_tree(node *tree)
-{
-	switch (tree->type)
-	{
-		case ADD:
-			return (eval_tree(tree->l) + eval_tree(tree->r));
-		case MULTI:
-			return (eval_tree(tree->l) * eval_tree(tree->r));
-		case VAL:
-			return (tree->val);
-	}
-	/* Unreachable, but keep compiler happy if -Wswitch is strict */
-	return (0);
-}
-
-int	main(int argc, char **argv)
-{
-	if (argc != 2)
-		return (1);
-	node *tree = parse_expr(argv[1]);
-	if (!tree)
-		return (1);
-	printf("%d\n", eval_tree(tree));
-	destroy_tree(tree);
-	return (0);
+    if (argc != 2)
+        return (1);
+    node *tree = parse_expr(argv[1]);
+    if (!tree)
+        return (1);
+    printf("%d\n", eval_tree(tree));
+    destroy_tree(tree);
+    return (0);
 }
