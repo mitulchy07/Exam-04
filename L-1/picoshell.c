@@ -43,12 +43,12 @@ int picoshell(char **cmds[])
 		{
 			if (prev_in != -1)
 			{
-				if (dup2(prev_in, STDIN_FILENO) == -1)
+				if (dup2(prev_in, 0) == -1)
 					exit(1);
 			}
 			if (has_next)
 			{
-				if (dup2(fd[1], STDOUT_FILENO) == -1)
+				if (dup2(fd[1], 1) == -1)
 					exit(1);
 			}
 
