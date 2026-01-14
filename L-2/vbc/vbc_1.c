@@ -1,91 +1,94 @@
-#include <stdlib.h>
-#include <ctype.h>
 #include <stdio.h>
+#include <ctype.h>
 
-static int plus(const char *s, int *i);
-
-static void unexpected_token(char c)
+int err(char c)
 {
-    printf("Unexpected token '%c'\n", c);
-    exit(1);
+	if (c) 
+        printf("Unexpected token '%c'\n", c);
+	else   
+        printf("Unexpected end of input\n");
+	return -1;
 }
 
-static void unexpected_end(void)
+int plus(const char *s, int *i);
+
+int factor(const char *s, int *i)
 {
-    printf("Unexpected end of input\n");
-    exit(1);
+	int r;
+
+	if (!s[*i]) 
+        return err(0);
+	if (s[*i] == '(')
+	{
+		(*i)++;
+		r = plus(s, i);
+		if (r < 0) 
+            return -1;
+		if (!s[*i]) 
+            return err(0);
+		if (s[*i] != ')') 
+            return err(s[*i]);
+		(*i)++;
+		return r;
+	}
+	if (isdigit((unsigned char)s[*i]))
+		return s[(*i)++] - '0';
+	return err(s[*i]);
 }
 
-static int factor(const char *s, int *i)
+int mul(const char *s, int *i)
 {
-    int res;
+	int r = factor(s, i), t;
 
-    if (s[*i] == '\0')
-        unexpected_end();
-
-    if (s[*i] == '(')
-    {
-        (*i)++;
-        res = plus(s, i);
-
-        if (s[*i] == '\0')
-            unexpected_end();
-        if (s[*i] != ')')
-            unexpected_token(s[*i]);
-
-        (*i)++;
-        return res;
-    }
-
-    if (isdigit((unsigned char)s[*i]))
-        return s[(*i)++] - '0';
-
-    unexpected_token(s[*i]);
-    return 0;
+	if (r < 0) 
+        return -1;
+	while (s[*i] == '*')
+	{
+		(*i)++;
+		if (!s[*i]) 
+            return err(0);
+		t = factor(s, i);
+		if (t < 0) 
+            return -1;
+		r *= t;
+	}
+	return r;
 }
 
-static int mul(const char *s, int *i)
+int plus(const char *s, int *i)
 {
-    int res = factor(s, i);
+	int r = mul(s, i), t;
 
-    while (s[*i] == '*')
-    {
-        (*i)++;
-        if (s[*i] == '\0')
-            unexpected_end();
-        res *= factor(s, i);
-    }
-    return res;
-}
-
-static int plus(const char *s, int *i)
-{
-    int res = mul(s, i);
-
-    while (s[*i] == '+')
-    {
-        (*i)++;
-        if (s[*i] == '\0')
-            unexpected_end();
-        res += mul(s, i);
-    }
-    return res;
+	if (r < 0) 
+        return -1;
+	while (s[*i] == '+')
+	{
+		(*i)++;
+		if (!s[*i]) 
+            return err(0);
+		t = mul(s, i);
+		if (t < 0) 
+            return -1;
+		r += t;
+	}
+	return r;
 }
 
 int main(int ac, char **av)
 {
-    int i = 0;
-    int res;
+	int i = 0, r;
 
-    if (ac != 2)
+	if (ac != 2) 
         return 1;
-
-    res = plus(av[1], &i);
-
-    if (av[1][i] != '\0')
-        unexpected_token(av[1][i]);
-
-    if (printf("%d\n", res) < 0)
+	r = plus(av[1], &i);
+	if (r < 0) 
         return 1;
-    return 0;
+	if (av[1][i]) 
+    { 
+        err(av[1][i]); 
+        return 1; 
+    }
+	if (printf("%d\n", r) < 0) 
+        return 1;
+	return 0;
 }
